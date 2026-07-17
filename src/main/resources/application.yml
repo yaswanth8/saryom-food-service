@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: saryom-food-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/saryom?currentSchema=food}
+    username: ${DB_USER:saryom_food}
+    password: ${DB_PASSWORD:saryom_food_local}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: food
+  flyway:
+    enabled: true
+    schemas: food
+    default-schema: food
+  cloud:
+    stream:
+      bindings:
+        food.posted:
+          destination: food.posted
+        food.claimed:
+          destination: food.claimed
+      kafka:
+        binder:
+          brokers: ${KAFKA_BROKERS:localhost:19092}
+
+server:
+  port: ${PORT:8086}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: kafka
+  cloud:
+    stream:
+      default-binder: kafka
+---
+spring:
+  config:
+    activate:
+      on-profile: rabbit
+  cloud:
+    stream:
+      default-binder: rabbit
+  rabbitmq:
+    addresses: ${CLOUDAMQP_URL:amqp://guest:guest@localhost:5672}
