@@ -1,5 +1,6 @@
 package com.saryom.foodservice.error;
 
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
@@ -27,6 +28,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     ProblemDetail handleConflict(ConflictException e) {
         return problem(HttpStatus.CONFLICT, "Conflict", e.getMessage());
+    }
+
+    /**
+     * Someone else changed this post between our read and our write — almost
+     * always a second taker reserving the same food. Semantically identical to
+     * losing the race outright, so it reads as a conflict, not a server error.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ProblemDetail handleLostRace(OptimisticLockingFailureException e) {
+        return problem(HttpStatus.CONFLICT, "Conflict",
+                "Someone just updated this food post — please refresh and try again");
     }
 
     @ExceptionHandler(AccessDeniedException.class)

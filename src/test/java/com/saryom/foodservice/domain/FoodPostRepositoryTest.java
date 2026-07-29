@@ -1,8 +1,10 @@
 package com.saryom.foodservice.domain;
 
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -10,6 +12,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @ActiveProfiles("dev")
@@ -19,6 +22,9 @@ class FoodPostRepositoryTest {
 
     @Autowired
     private FoodPostRepository repository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Test
     void browseReturnsOnlyAvailableUnexpiredPosts() {
@@ -43,6 +49,38 @@ class FoodPostRepositoryTest {
 
         var byText = repository.browse("apple", null, NOW, PageRequest.of(0, 10));
         assertThat(byText.getContent()).extracting(FoodPost::getTitle).containsExactly("Fresh apples");
+    }
+
+    /**
+     * Two takers racing for the last portion. Both requests load the post while
+     * it is still AVAILABLE, so both pass {@link FoodPost#reserve}'s status
+     * guard — the guard alone cannot separate them. The @Version column is what
+     * makes the loser's write fail instead of silently overwriting the winner.
+     */
+    @Test
+    void concurrentReservationsCannotBothWin() {
+        FoodPost post = save("Last soup", FoodType.PREPARED_MEAL, FoodStatus.AVAILABLE, null);
+        entityManager.flush();
+        entityManager.clear();
+
+        // Each request gets its own copy, both at version 0, both seeing AVAILABLE.
+        FoodPost alicesCopy = repository.findById(post.getId()).orElseThrow();
+        entityManager.detach(alicesCopy);
+        FoodPost bobsCopy = repository.findById(post.getId()).orElseThrow();
+        entityManager.detach(bobsCopy);
+
+        alicesCopy.reserve("alice", NOW);
+        repository.saveAndFlush(alicesCopy);
+        entityManager.clear();
+
+        bobsCopy.reserve("bob", NOW);
+        assertThatThrownBy(() -> repository.saveAndFlush(bobsCopy))
+                .isInstanceOf(OptimisticLockingFailureException.class);
+
+        entityManager.clear();
+        FoodPost persisted = repository.findById(post.getId()).orElseThrow();
+        assertThat(persisted.getClaimedBy()).isEqualTo("alice");
+        assertThat(persisted.getStatus()).isEqualTo(FoodStatus.RESERVED);
     }
 
     private FoodPost save(String title, FoodType type, FoodStatus status, Instant bestBefore) {

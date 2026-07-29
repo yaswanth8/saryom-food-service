@@ -7,6 +7,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
@@ -24,6 +25,17 @@ public class FoodPost {
 
     @Id
     private UUID id;
+
+    /**
+     * Guards the reservation lifecycle against lost updates. Two concurrent
+     * reserve calls both see AVAILABLE and both pass {@link #reserve}'s guard;
+     * without a version the later write wins silently and two takers each think
+     * they claimed the food. With it, the loser's commit fails and the service
+     * turns that into a 409.
+     */
+    @Version
+    @Column(nullable = false)
+    private long version;
 
     @Column(name = "giver_id", nullable = false)
     private String giverId;
