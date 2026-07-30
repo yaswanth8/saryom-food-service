@@ -10,6 +10,7 @@ import com.saryom.foodservice.error.NotFoundException;
 import com.saryom.foodservice.events.DomainEventPublisher;
 import com.saryom.foodservice.events.FoodClaimedEvent;
 import com.saryom.foodservice.events.FoodPostedEvent;
+import com.saryom.foodservice.events.FoodReservationExpiredEvent;
 import com.saryom.foodservice.web.dto.CreateFoodRequest;
 import com.saryom.foodservice.web.dto.FoodCardResponse;
 import com.saryom.foodservice.web.dto.FoodDetailResponse;
@@ -144,6 +145,30 @@ public class FoodService {
         }
         post.release(clock.instant());
         return FoodDetailResponse.from(posts.save(post), uid);
+    }
+
+    /**
+     * Releases a reservation that was never collected, returning the food to the
+     * pool. Each call is its own transaction so one failure inside a sweep
+     * cannot roll back the rest of the batch.
+     *
+     * @return true when this call performed the release. False means someone got
+     *     there first — the taker collected it, either party released it, or a
+     *     concurrent sweep on another instance won. All are fine, and none is an
+     *     error worth failing the sweep over.
+     */
+    @Transactional
+    public boolean expireReservation(UUID id) {
+        FoodPost post = posts.findById(id).orElse(null);
+        if (post == null || post.getStatus() != FoodStatus.RESERVED) {
+            return false;
+        }
+        String previousClaimer = post.getClaimedBy();
+        post.release(clock.instant());
+        FoodPost saved = posts.save(post);
+        events.publish("food.reservation_expired", FoodReservationExpiredEvent.of(
+                saved.getId(), saved.getGiverId(), previousClaimer, saved.getTitle()));
+        return true;
     }
 
     @Transactional

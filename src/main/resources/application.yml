@@ -33,6 +33,17 @@ spring:
 server:
   port: ${PORT:8086}
 
+saryom:
+  food:
+    # How long a taker may hold a reservation before it returns to the pool.
+    # Long enough to cover "I'll collect after work", short enough that
+    # perishable food is not written off by someone who never turns up.
+    reservation-hold-hours: ${FOOD_RESERVATION_HOLD_HOURS:24}
+    # Fixed delay between sweeps; runs never overlap.
+    sweep-interval-ms: ${FOOD_SWEEP_INTERVAL_MS:900000}
+    # Let the instance finish starting before the first sweep.
+    sweep-initial-delay-ms: ${FOOD_SWEEP_INITIAL_DELAY_MS:60000}
+
 management:
   endpoints:
     web:
