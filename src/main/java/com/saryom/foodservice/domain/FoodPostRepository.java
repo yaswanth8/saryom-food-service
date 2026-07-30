@@ -42,4 +42,14 @@ public interface FoodPostRepository extends JpaRepository<FoodPost, UUID> {
     List<FoodPost> findByGiverIdOrderByCreatedAtDesc(String giverId);
 
     List<FoodPost> findByClaimedByAndStatusOrderByClaimedAtDesc(String claimedBy, FoodStatus status);
+
+    /**
+     * Reservations held past their collection window, oldest first.
+     *
+     * <p>Paged so one sweep cannot load an unbounded backlog into memory — if a
+     * long outage leaves thousands stale, they drain over several runs instead of
+     * one enormous transaction.
+     */
+    Page<FoodPost> findByStatusAndClaimedAtBeforeOrderByClaimedAtAsc(
+            FoodStatus status, Instant claimedBefore, Pageable pageable);
 }
