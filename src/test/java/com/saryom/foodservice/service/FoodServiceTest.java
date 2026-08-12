@@ -8,9 +8,11 @@ import com.saryom.foodservice.domain.FoodType;
 import com.saryom.foodservice.error.ConflictException;
 import com.saryom.foodservice.events.DomainEventPublisher;
 import com.saryom.foodservice.events.FoodClaimedEvent;
+import com.saryom.foodservice.events.FoodCompletedEvent;
 import com.saryom.foodservice.events.FoodPostedEvent;
 import com.saryom.foodservice.web.dto.CreateFoodRequest;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -111,5 +114,35 @@ class FoodServiceTest {
         var response = service.release(post.getId(), "bob");
 
         assertThat(response.status()).isEqualTo("AVAILABLE");
+    }
+
+    @Test
+    void completingAHandoverNamesBothPeople() {
+        FoodPost post = availablePost("alice");
+        post.reserve("bob", clock.instant());
+        when(posts.findById(post.getId())).thenReturn(Optional.of(post));
+
+        service.complete(post.getId(), "alice");
+
+        ArgumentCaptor<FoodCompletedEvent> event = ArgumentCaptor.forClass(FoodCompletedEvent.class);
+        verify(events).publish(eq("food.completed"), event.capture());
+        // "These two met and the food changed hands" is what makes a review of
+        // either of them earned; food.claimed cannot carry that, because plenty
+        // of reservations are released without anyone turning up.
+        assertThat(event.getValue().giverId()).isEqualTo("alice");
+        assertThat(event.getValue().collectorId()).isEqualTo("bob");
+    }
+
+    @Test
+    void aReleasedReservationNeverAnnouncesACompletedHandover() {
+        FoodPost post = availablePost("alice");
+        post.reserve("bob", clock.instant());
+        when(posts.findById(post.getId())).thenReturn(Optional.of(post));
+
+        service.release(post.getId(), "bob");
+
+        // Releasing is the common case for food that is never collected; it must
+        // not unlock a review of a stranger.
+        verify(events, never()).publish(eq("food.completed"), any());
     }
 }

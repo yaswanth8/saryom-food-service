@@ -26,6 +26,8 @@ spring:
           destination: food.posted
         food.claimed:
           destination: food.claimed
+        food.completed:
+          destination: food.completed
       kafka:
         binder:
           brokers: ${KAFKA_BROKERS:localhost:19092}

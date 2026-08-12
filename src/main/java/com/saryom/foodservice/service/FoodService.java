@@ -9,6 +9,7 @@ import com.saryom.foodservice.domain.Haversine;
 import com.saryom.foodservice.error.NotFoundException;
 import com.saryom.foodservice.events.DomainEventPublisher;
 import com.saryom.foodservice.events.FoodClaimedEvent;
+import com.saryom.foodservice.events.FoodCompletedEvent;
 import com.saryom.foodservice.events.FoodPostedEvent;
 import com.saryom.foodservice.events.FoodReservationExpiredEvent;
 import com.saryom.foodservice.web.dto.CreateFoodRequest;
@@ -175,8 +176,15 @@ public class FoodService {
     public FoodDetailResponse complete(UUID id, String uid) {
         FoodPost post = load(id);
         post.requireOwner(uid);
+        // complete() only accepts a RESERVED post, so there is always a
+        // claimer, and it survives the transition — this is the collector the
+        // event exists to name.
+        String collector = post.getClaimedBy();
         post.complete(clock.instant());
-        return FoodDetailResponse.from(posts.save(post), uid);
+        FoodPost saved = posts.save(post);
+        events.publish("food.completed", FoodCompletedEvent.of(
+                saved.getId(), saved.getGiverId(), collector, saved.getTitle()));
+        return FoodDetailResponse.from(saved, uid);
     }
 
     @Transactional
