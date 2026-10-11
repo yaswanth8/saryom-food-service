@@ -39,7 +39,7 @@ class FoodServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new FoodService(posts, events, clock);
+        service = new FoodService(posts, events, clock, new ReservationPolicy(24));
         when(posts.save(any(FoodPost.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -73,6 +73,40 @@ class FoodServiceTest {
         assertThat(response.status()).isEqualTo("RESERVED");
         assertThat(response.reservedByMe()).isTrue();
         verify(events).publish(eq("food.claimed"), any(FoodClaimedEvent.class));
+    }
+
+    @Test
+    void aReservationSaysWhenItMustBeCollectedBy() {
+        // Reservations lapse after the hold period, and the taker was never told
+        // how long that was — they found out when the food was gone.
+        FoodPost post = availablePost("alice");
+        when(posts.findById(post.getId())).thenReturn(Optional.of(post));
+
+        var response = service.reserve(post.getId(), "bob");
+
+        assertThat(response.reservedUntil()).isEqualTo(clock.instant().plus(java.time.Duration.ofHours(24)));
+    }
+
+    @Test
+    void foodThatIsNotReservedHasNoDeadline() {
+        FoodPost post = availablePost("alice");
+        when(posts.findById(post.getId())).thenReturn(Optional.of(post));
+
+        assertThat(service.getDetail(post.getId(), "bob").reservedUntil()).isNull();
+    }
+
+    @Test
+    void everyoneSeesWhenAReservedPostMightComeBack() {
+        // Not just the taker: someone else wanting the same food learns it may
+        // return, rather than seeing a flat "Reserved" with no end.
+        FoodPost post = availablePost("alice");
+        when(posts.findById(post.getId())).thenReturn(Optional.of(post));
+        service.reserve(post.getId(), "bob");
+
+        var asStranger = service.getDetail(post.getId(), "carol");
+
+        assertThat(asStranger.reservedByMe()).isFalse();
+        assertThat(asStranger.reservedUntil()).isEqualTo(clock.instant().plus(java.time.Duration.ofHours(24)));
     }
 
     @Test

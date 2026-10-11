@@ -5,13 +5,11 @@ import com.saryom.foodservice.domain.FoodPostRepository;
 import com.saryom.foodservice.domain.FoodStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.util.List;
 
 /**
@@ -39,16 +37,16 @@ public class ReservationSweeper {
     private final FoodPostRepository posts;
     private final FoodService foodService;
     private final Clock clock;
-    private final Duration holdDuration;
+    private final ReservationPolicy policy;
 
     public ReservationSweeper(FoodPostRepository posts,
                               FoodService foodService,
                               Clock clock,
-                              @Value("${saryom.food.reservation-hold-hours:24}") long holdHours) {
+                              ReservationPolicy policy) {
         this.posts = posts;
         this.foodService = foodService;
         this.clock = clock;
-        this.holdDuration = Duration.ofHours(holdHours);
+        this.policy = policy;
     }
 
     /**
@@ -61,7 +59,7 @@ public class ReservationSweeper {
         int released = sweep();
         if (released > 0) {
             log.info("Released {} uncollected reservation(s) held longer than {}h",
-                    released, holdDuration.toHours());
+                    released, policy.hold().toHours());
         }
     }
 
@@ -69,7 +67,7 @@ public class ReservationSweeper {
     int sweep() {
         List<FoodPost> stale = posts.findByStatusAndClaimedAtBeforeOrderByClaimedAtAsc(
                         FoodStatus.RESERVED,
-                        clock.instant().minus(holdDuration),
+                        policy.staleBefore(clock.instant()),
                         PageRequest.of(0, BATCH_SIZE))
                 .getContent();
 

@@ -39,11 +39,14 @@ public class FoodService {
     private final FoodPostRepository posts;
     private final DomainEventPublisher events;
     private final Clock clock;
+    private final ReservationPolicy reservations;
 
-    public FoodService(FoodPostRepository posts, DomainEventPublisher events, Clock clock) {
+    public FoodService(FoodPostRepository posts, DomainEventPublisher events, Clock clock,
+                       ReservationPolicy reservations) {
         this.posts = posts;
         this.events = events;
         this.clock = clock;
+        this.reservations = reservations;
     }
 
     /**
@@ -102,7 +105,7 @@ public class FoodService {
 
     @Transactional(readOnly = true)
     public FoodDetailResponse getDetail(UUID id, String viewerId) {
-        return FoodDetailResponse.from(load(id), viewerId);
+        return FoodDetailResponse.from(load(id), viewerId, reservations);
     }
 
     @Transactional
@@ -113,7 +116,7 @@ public class FoodService {
         FoodPost saved = posts.save(post);
         events.publish("food.posted", FoodPostedEvent.of(
                 saved.getId(), giverId, saved.getTitle(), saved.getFoodType().name(), saved.getLocationText()));
-        return FoodDetailResponse.from(saved, giverId);
+        return FoodDetailResponse.from(saved, giverId, reservations);
     }
 
     @Transactional
@@ -122,7 +125,7 @@ public class FoodService {
         post.requireOwner(uid);
         post.update(req.title(), req.description(), req.quantity(), req.foodType(), req.dietary(),
                 req.locationText(), req.bestBefore(), req.imageUrl(), clock.instant());
-        return FoodDetailResponse.from(posts.save(post), uid);
+        return FoodDetailResponse.from(posts.save(post), uid, reservations);
     }
 
     /** A taker reserves the food; notifies the giver via {@code food.claimed}. */
@@ -133,7 +136,7 @@ public class FoodService {
         FoodPost saved = posts.save(post);
         events.publish("food.claimed", FoodClaimedEvent.of(
                 saved.getId(), saved.getGiverId(), takerId, saved.getTitle()));
-        return FoodDetailResponse.from(saved, takerId);
+        return FoodDetailResponse.from(saved, takerId, reservations);
     }
 
     /** Release a reservation. Allowed for the taker who reserved it or the giver. */
@@ -145,7 +148,7 @@ public class FoodService {
                     "Only the giver or the taker who reserved it can release this post");
         }
         post.release(clock.instant());
-        return FoodDetailResponse.from(posts.save(post), uid);
+        return FoodDetailResponse.from(posts.save(post), uid, reservations);
     }
 
     /**
@@ -184,7 +187,7 @@ public class FoodService {
         FoodPost saved = posts.save(post);
         events.publish("food.completed", FoodCompletedEvent.of(
                 saved.getId(), saved.getGiverId(), collector, saved.getTitle()));
-        return FoodDetailResponse.from(saved, uid);
+        return FoodDetailResponse.from(saved, uid, reservations);
     }
 
     @Transactional
@@ -198,14 +201,14 @@ public class FoodService {
     @Transactional(readOnly = true)
     public List<FoodDetailResponse> mine(String uid) {
         return posts.findByGiverIdOrderByCreatedAtDesc(uid).stream()
-                .map(f -> FoodDetailResponse.from(f, uid))
+                .map(f -> FoodDetailResponse.from(f, uid, reservations))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<FoodDetailResponse> reservedByMe(String uid) {
         return posts.findByClaimedByAndStatusOrderByClaimedAtDesc(uid, FoodStatus.RESERVED).stream()
-                .map(f -> FoodDetailResponse.from(f, uid))
+                .map(f -> FoodDetailResponse.from(f, uid, reservations))
                 .toList();
     }
 
