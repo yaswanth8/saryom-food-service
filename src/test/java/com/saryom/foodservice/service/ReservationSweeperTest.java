@@ -33,8 +33,8 @@ class ReservationSweeperTest {
 
     private final FoodPostRepository posts = mock(FoodPostRepository.class);
     private final DomainEventPublisher events = mock(DomainEventPublisher.class);
-    private final FoodService foodService = new FoodService(posts, events, CLOCK);
-    private final ReservationSweeper sweeper = new ReservationSweeper(posts, foodService, CLOCK, 24);
+    private final FoodService foodService = new FoodService(posts, events, CLOCK, new ReservationPolicy(24));
+    private final ReservationSweeper sweeper = new ReservationSweeper(posts, foodService, CLOCK, new ReservationPolicy(24));
 
     private FoodPost reservedPost(String taker, Instant claimedAt) {
         FoodPost post = new FoodPost(UUID.randomUUID(), "giver", "Soup", "warm", "2 portions",
